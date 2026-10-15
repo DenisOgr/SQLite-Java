@@ -18,6 +18,9 @@ cli → query → schema → btree(cursor) → record → page → io(Pager)
 An upper layer knows about the lower one, never the other way around. Each layer is a separate
 package. `Pager` sits behind an interface (file-based in prod, in-memory in tests).
 
+Cross-layer packages hold classes used by several layers
+- common.exceptions - stores exceptions
+
 ## Consequences
 - (+) Each layer is testable without the layers above it (Pager is mocked with a buffer).
 - (+) Layers = ticket boundaries in `BACKLOG.md`. Architecture and backlog are one structure.
