@@ -45,7 +45,7 @@ public class FilePager implements Pager {
     }
 
     @Override
-    public ByteBuffer readPage(int pageNum) {
+    public ByteBuffer readPage(long pageNum) {
         if (pageNum < 1) {
             throw new IllegalArgumentException(String.format("Invalid page number: %d.", pageNum));
         }

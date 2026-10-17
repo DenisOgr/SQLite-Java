@@ -36,3 +36,9 @@ I/O errors, and a `FileChannel.read` that may return fewer bytes than requested.
 - (−) A short read and a truncated file give the same error. A retry loop is a future improvement.
 - (−) An in-memory Pager must implement a no-op `close()`.
 - (−) Tests for page size 32768 and raw value 1 (65536) are postponed to SJ-3.
+
+## Amended
+
+- Changed type page number in Pager.readPage interface: from int to long. Because the right most pointer in the header
+  of interior pages is long (unsigned int on disk).
+- 
