@@ -1,4 +1,4 @@
-package net.porplenko.sqlite.record;
+package net.porplenko.sqlite.page;
 
 import java.nio.ByteBuffer;
 import java.util.stream.Stream;

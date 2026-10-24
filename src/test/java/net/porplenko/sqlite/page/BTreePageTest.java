@@ -10,18 +10,22 @@ import net.porplenko.sqlite.io.FilePager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class BTreePageTest {
     private FilePager pager;
+    private DatabaseHeader dbHeader;
 
     @BeforeEach
     void setUp() throws URISyntaxException, IOException {
         URL url = FilePager.class.getResource("/sample-dbs/superheroes.db");
         assertThat(url).isNotNull();
         pager = FilePager.open(Path.of(url.toURI()));
+        dbHeader = DatabaseHeader.parse(pager.readPage(1L));
     }
 
     @AfterEach
@@ -32,7 +36,7 @@ class BTreePageTest {
     @Test
     void createWithInvalidSizeBuf() {
         ByteBuffer buf = ByteBuffer.allocate(5);
-        assertThatThrownBy(() -> new BTreePage(buf, 1))
+        assertThatThrownBy(() -> new BTreePage(buf, 1, dbHeader))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining("Invalid page size");
     }
@@ -40,11 +44,11 @@ class BTreePageTest {
     @Test
     void createWithInvalidPageNum() {
         ByteBuffer buf = ByteBuffer.allocate(120);
-        assertThatThrownBy(() -> new BTreePage(buf, 0))
+        assertThatThrownBy(() -> new BTreePage(buf, 0, dbHeader))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid page number");
 
-        assertThatThrownBy(() -> new BTreePage(buf, -1))
+        assertThatThrownBy(() -> new BTreePage(buf, -1, dbHeader))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid page number");
     }
@@ -52,7 +56,7 @@ class BTreePageTest {
     @Test
     void createWithInvalidHeader() {
         ByteBuffer buf = ByteBuffer.allocate(120);
-        assertThatThrownBy(() -> new BTreePage(buf, 2))
+        assertThatThrownBy(() -> new BTreePage(buf, 2, dbHeader))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining("Invalid header");
     }
@@ -61,7 +65,7 @@ class BTreePageTest {
     @Test
     void createFromFilePage1() {
         ByteBuffer buf = pager.readPage(1);
-        BTreePage page = new BTreePage(buf, 1);
+        BTreePage page = new BTreePage(buf, 1, dbHeader);
         assertThat(page.getPageNum()).isEqualTo(1);
         BTreePage.Header header = page.getHeader();
         assertThat(header.type()).isEqualTo(BTreePageType.LEAF_TABLE);
@@ -75,7 +79,7 @@ class BTreePageTest {
     @Test
     void createFromFilePage2() {
         ByteBuffer buf = pager.readPage(2);
-        BTreePage page = new BTreePage(buf, 2);
+        BTreePage page = new BTreePage(buf, 2, dbHeader);
         assertThat(page.getPageNum()).isEqualTo(2);
         BTreePage.Header header = page.getHeader();
         assertThat(header.type()).isEqualTo(BTreePageType.INTERIOR_TABLE);
@@ -89,7 +93,7 @@ class BTreePageTest {
     @Test
     void getCellPointersTest() {
         ByteBuffer buf = pager.readPage(58);
-        BTreePage page = new BTreePage(buf, 58);
+        BTreePage page = new BTreePage(buf, 58, dbHeader);
         int[] pointers = page.getCellPointers();
         assertThat(pointers).hasSize(14);
         assertThat(pointers[0]).isEqualTo(4086);
@@ -99,7 +103,7 @@ class BTreePageTest {
     @Test
     void getHeader() {
         ByteBuffer buf = pager.readPage(8);
-        BTreePage page = new BTreePage(buf, 8);
+        BTreePage page = new BTreePage(buf, 8, dbHeader);
         BTreePage.Header header = page.getHeader();
         assertThat(header.type()).isEqualTo(BTreePageType.LEAF_TABLE);
         assertThat(header.cellCount()).isEqualTo(65);
@@ -110,7 +114,7 @@ class BTreePageTest {
     @Test
     void getCellPointerTest() {
         ByteBuffer buf = pager.readPage(8);
-        BTreePage page = new BTreePage(buf, 8);
+        BTreePage page = new BTreePage(buf, 8, dbHeader);
         assertThat(page.getCellPointer(0)).isEqualTo(4009);
         assertThat(page.getCellPointer(1)).isEqualTo(3966);
         assertThat(page.getCellPointer(64)).isEqualTo(177);
@@ -119,7 +123,7 @@ class BTreePageTest {
     @Test
     void getInvalidCellPointerTest() {
         ByteBuffer buf = pager.readPage(8);
-        BTreePage page = new BTreePage(buf, 8);
+        BTreePage page = new BTreePage(buf, 8, dbHeader);
         assertThatThrownBy(() -> page.getCellPointer(65))
             .isInstanceOf(IndexOutOfBoundsException.class)
             .hasMessageContaining("Invalid index for cell.");
@@ -128,7 +132,7 @@ class BTreePageTest {
     @Test
     void getPageNum() {
         ByteBuffer buf = pager.readPage(10);
-        BTreePage page = new BTreePage(buf, 10);
+        BTreePage page = new BTreePage(buf, 10, dbHeader);
         assertThat(page.getPageNum()).isEqualTo(10);
     }
 
@@ -188,5 +192,82 @@ class BTreePageTest {
         assertThat(header.cellCount()).isEqualTo(448);
         assertThat(header.rightMostPointer()).isEqualTo(0);
         assertThat(header.getSize()).isEqualTo(8);
+    }
+
+    @Test
+    void getCellInvalidIndex() {
+        int pageNum = 4;
+        ByteBuffer buf = pager.readPage(pageNum);
+        BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+        assertThatThrownBy(() -> page.getCell(0))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("The position (0) for cell is invalid.");
+
+        assertThatThrownBy(() -> page.getCell(2))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("The position (2) for cell is invalid.");
+
+        assertThatThrownBy(() -> page.getCell(-1))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("The position (-1) for cell is invalid.");
+
+        int invalidPos = buf.limit() + 1;
+        assertThatThrownBy(() -> page.getCell(invalidPos))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("The position (%d) for cell is invalid.".formatted(invalidPos));
+    }
+
+    @Test
+    void getCellForOverflowPage() {
+        // use real page, but fake small page size
+        int pageNum = 4;
+        ByteBuffer buf = pager.readPage(pageNum);
+        DatabaseHeader dbHeader = new DatabaseHeader(
+            10,
+            8,
+            this.dbHeader.pageCount(),
+            this.dbHeader.textEncoding());
+
+        BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+        int pointer = page.getCellPointer(0);
+        assertThatThrownBy(() -> page.getCell(pointer))
+            .isInstanceOf(UnsupportedOperationException.class)
+            .hasMessageContaining(
+                "The page is overflow. Current implementation can not works with overflow page");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "7", // Index Leaf
+        "2", // Table Interior
+        "58" // Index Interior
+    })
+    void getCellForUnsupportedPageTypes(int pageNum) {
+        ByteBuffer buf = pager.readPage(pageNum);
+        BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+        int pointer = page.getCellPointer(0);
+        assertThatThrownBy(() -> page.getCell(pointer))
+            .isInstanceOf(UnsupportedOperationException.class)
+            .hasMessageContaining(
+                "The page type is not lead table. Current implementation can work only with  lead table page type.");
+    }
+
+    @Test
+    void getCellSuccess() {
+        int pageNum = 4;
+        ByteBuffer buf = pager.readPage(pageNum);
+        BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+        int pointer = page.getCellPointer(0);
+        BTreePage.LeafTableCell cell = page.getCell(pointer);
+        assertThat(cell.rowId()).isEqualTo(1);
+        assertThat(cell.payload().limit()).isEqualTo(62);
+    }
+
+    @Test
+    void getDBHeaderTest() {
+        int pageNum = 4;
+        ByteBuffer buf = pager.readPage(pageNum);
+        BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+        assertThat(page.getDbHeader()).isEqualTo(dbHeader);
     }
 }

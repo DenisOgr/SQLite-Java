@@ -4,11 +4,14 @@ import java.nio.ByteBuffer;
 import net.porplenko.sqlite.common.exceptions.CorruptDatabaseException;
 
 public class BTreePage {
+    private final DatabaseHeader dbHeader;
     private final ByteBuffer buf;
     private final long pageNum;
     private final Header header;
+    private final int TABLE_LEAF_MAX_LOCAL_OVERHEAD = 35;
 
-    public BTreePage(ByteBuffer buf, long pageNum) {
+    public BTreePage(ByteBuffer buf, long pageNum, DatabaseHeader dbHeader) {
+        this.dbHeader = dbHeader;
         if (pageNum < 1) {
             throw new IllegalArgumentException("Invalid page number: " + pageNum);
         }
@@ -34,6 +37,10 @@ public class BTreePage {
         return header;
     }
 
+    public DatabaseHeader getDbHeader() {
+        return dbHeader;
+    }
+
     public long getPageNum() {
         return pageNum;
     }
@@ -53,6 +60,32 @@ public class BTreePage {
         }
         int offset = getDatabaseOffset() + header.getSize() + i * 2;
         return Short.toUnsignedInt(buf.getShort(offset));
+    }
+
+    public LeafTableCell getCell(int i) {
+        if (header.type != BTreePageType.LEAF_TABLE) {
+            throw new UnsupportedOperationException(
+                "The page type is not lead table. Current implementation can work only with  lead table page type.");
+        }
+        if (i < header.getSize() || i > buf.limit()) {
+            throw new IllegalArgumentException(
+                "The position (%d) for cell is invalid.".formatted(i));
+        }
+        ByteBuffer newBuffer = buf.duplicate();
+        newBuffer.position(i);
+        long payloadSize = Varint.read(newBuffer);
+        if (payloadSize > (dbHeader.pageSize() - TABLE_LEAF_MAX_LOCAL_OVERHEAD - dbHeader.reservedSpacePerPage())) {
+            throw new UnsupportedOperationException(
+                "The page is overflow. Current implementation can not works with overflow page.");
+        }
+        if (newBuffer.position() + payloadSize > newBuffer.limit()) {
+            throw new CorruptDatabaseException(
+                "Invalid size of the cell with position %d. The payload size exceed the buffer limit.".formatted(i));
+        }
+        return new LeafTableCell(Varint.read(newBuffer), newBuffer.slice(newBuffer.position(), (int) payloadSize));
+    }
+
+    public record LeafTableCell(long rowId, ByteBuffer payload) {
     }
 
     public record Header(BTreePageType type, int cellCount, long rightMostPointer) {
