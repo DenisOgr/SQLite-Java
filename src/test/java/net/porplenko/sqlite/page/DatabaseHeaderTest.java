@@ -135,4 +135,10 @@ class DatabaseHeaderTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid buffer size");
     }
+
+    @Test
+    void pageSizeWithoutReservedTest() {
+        DatabaseHeader header = new DatabaseHeader(4096, 32, 20, TextEncoding.UTF_8);
+        assertThat(header.pageSizeWithoutReserved()).isEqualTo(4064);
+    }
 }

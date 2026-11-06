@@ -42,4 +42,8 @@ public record DatabaseHeader(
             throw new CorruptDatabaseException("The file is not a database (invalid text encoding code).", e);
         }
     }
+
+    public int pageSizeWithoutReserved() {
+        return pageSize - reservedSpacePerPage;
+    }
 }
