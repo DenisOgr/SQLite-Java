@@ -80,7 +80,7 @@ public class SchemaEntryTest {
 
         assertThatThrownBy(() -> SchemaEntry.parse(new Record(values)))
             .isInstanceOf(CorruptDatabaseException.class)
-            .hasMessageContaining("The column `root_page` is invalid: negative value.");
+            .hasMessageContaining("The column `rootpage` is invalid: negative value.");
     }
 
     @Test
@@ -95,7 +95,7 @@ public class SchemaEntryTest {
 
         assertThatThrownBy(() -> SchemaEntry.parse(new Record(values)))
             .isInstanceOf(CorruptDatabaseException.class)
-            .hasMessageContaining("Column `root_page` has invalid type. Should be Value.Int, got Text[value=10].");
+            .hasMessageContaining("Column `rootpage` has invalid type. Should be Value.Int, got Text[value=10].");
     }
 
     @Test

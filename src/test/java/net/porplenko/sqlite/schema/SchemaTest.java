@@ -16,9 +16,22 @@ class SchemaTest {
         assertThat(url).isNotNull();
         try (FilePager pager = FilePager.open(Path.of(url.toURI()))) {
             Schema schema = new Schema(pager);
-            SchemaEntry[] tables = schema.getSchemas();
-            assertThat(tables.length).isEqualTo(2);
-        }
+            SchemaEntry[] schemas = schema.getSchemas();
+            assertThat(schemas.length).isEqualTo(2);
 
+            SchemaEntry superhero = schemas[0];
+            assertThat(superhero.name()).isEqualTo("superheroes");
+            assertThat(superhero.type()).isEqualTo(SchemaEntry.SchemaEntryType.TABLE);
+            assertThat(superhero.tblName()).isEqualTo("superheroes");
+            assertThat(superhero.rootPage()).isEqualTo(2);
+            assertThat(superhero.sql().startsWith("CREATE TABLE \"superheroes\"")).isTrue();
+
+            SchemaEntry sqlite_sequences = schemas[1];
+            assertThat(sqlite_sequences.name()).isEqualTo("sqlite_sequence");
+            assertThat(sqlite_sequences.type()).isEqualTo(SchemaEntry.SchemaEntryType.TABLE);
+            assertThat(sqlite_sequences.tblName()).isEqualTo("sqlite_sequence");
+            assertThat(sqlite_sequences.rootPage()).isEqualTo(3);
+            assertThat(sqlite_sequences.sql()).isEqualTo("CREATE TABLE sqlite_sequence(name,seq)");
+        }
     }
 }

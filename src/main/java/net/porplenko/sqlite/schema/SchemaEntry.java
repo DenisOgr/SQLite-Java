@@ -14,9 +14,9 @@ public record SchemaEntry(SchemaEntryType type, String name, String tblName, lon
                     record.values().length));
         }
 
-        long rootPage = number(record.values()[3], "root_page");
+        long rootPage = number(record.values()[3], "rootpage");
         if (rootPage < 0) {
-            throw new CorruptDatabaseException("The column `root_page` is invalid: negative value.");
+            throw new CorruptDatabaseException("The column `rootpage` is invalid: negative value.");
         }
         SchemaEntryType type = entityType(record.values()[0], "type");
 

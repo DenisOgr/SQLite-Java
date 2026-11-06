@@ -20,7 +20,9 @@ serial types (each varint, until header size end), values in the body.
   interior type (in case it hold huge amount of tables that can not fit in single page) - cli does not know about it and
   can not work with it. It is responsibility of following layers.
 - The cli layer is simple: create Pager from input file, get list of schema objects, then filter and print them. It
-  shows only entries with `type=table`, hides entries that name starts with `sqlite_%`. Also, it sorts entries by name.
+  shows only entries with `type=table`, hides entries that name starts with `sqlite_%` (but show tables with name
+  started with  `sqlite`; for example: `sqlitetest`). Also, it sorts entries by name. Each table name on the separate
+  line.
 - The schema layer gets object of the whole database (Pager class), get first page, convert to BTreePage object, iterate
   over cell points. It creates record Cell for each byte buffer, next it creates the record `Record` from byte buffer
   for each cell. Convert Record to SchemaEntry. Note: use own view of byte buffer, for cell, instead of share the common
@@ -41,6 +43,8 @@ serial types (each varint, until header size end), values in the body.
   from database header to detect overflow pages.
 - Move Varint record from record package to page. The class Btree page uses Varint to read payload size and row id. To
   avoid breaking dependency rule - moved record to lower layer.
+- Add and uses `cellContentArea` for validating offsets for cells.
+- Files in tests are generated using Mac's sqlite3; it uses 12 reserved bytes.
 - The sqlite_master table has the following table definition:
 
 ```sqlite
@@ -83,6 +87,8 @@ table, index, view, trigger)) defines types. Add test for specific case:
   client (schema layer) should detect overflow page or not. The cons of those approaches that database header info is
   used by another functionality in the BTreePage object - so it will be duplication. Also, the creating the cell is
   responsibility of the page layer, not clients of the page layer.
+- Dont use value from `cellContentArea` for validating cell offsets. The offset can point to areas before or after cell
+  areas, in this case the payload and cell will be wrong.
 
 ## Consequences
 
@@ -98,3 +104,5 @@ table, index, view, trigger)) defines types. Add test for specific case:
   page byte buffer.
 - (-) For working with `sqlite_master` schema, the app uses hardcoded name and order. For the other tables, the order
   and names should come from the `CREATE TABLE` definition, not hardcoded in the code.
+- (-) this deliberately differs from sqlite3 .tables. The shell filters with NOT LIKE 'sqlite_%', where _ is a wildcard,
+  so it also hides user tables like sqlitefoo. Here they're shown. The DoD comparison holds for all names except these.

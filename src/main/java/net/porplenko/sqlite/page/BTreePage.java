@@ -4,13 +4,19 @@ import java.nio.ByteBuffer;
 import net.porplenko.sqlite.common.exceptions.CorruptDatabaseException;
 
 public class BTreePage {
+    private final static int TABLE_LEAF_MAX_LOCAL_OVERHEAD = 35;
     private final DatabaseHeader dbHeader;
     private final ByteBuffer buf;
     private final long pageNum;
     private final Header header;
-    private final int TABLE_LEAF_MAX_LOCAL_OVERHEAD = 35;
+
 
     public BTreePage(ByteBuffer buf, long pageNum, DatabaseHeader dbHeader) {
+        if (buf.limit() < dbHeader.pageSizeWithoutReserved()) {
+            throw new CorruptDatabaseException(
+                "Invalid page size. Actual: %d, required: at least: %d".formatted(buf.limit(),
+                    dbHeader.pageSizeWithoutReserved()));
+        }
         this.dbHeader = dbHeader;
         if (pageNum < 1) {
             throw new IllegalArgumentException("Invalid page number: " + pageNum);
@@ -18,7 +24,7 @@ public class BTreePage {
         this.pageNum = pageNum;
         int dbOffset = getDatabaseOffset();
 
-        if (buf.limit() < dbOffset + 8) { // 108 or 8 are a minimum sizes of the header (depends on page)
+        if (buf.limit() != dbHeader.pageSize()) {
             throw new CorruptDatabaseException("Invalid page size.");
         }
         this.buf = buf;
@@ -26,6 +32,12 @@ public class BTreePage {
             this.header = Header.parse(buf.slice(dbOffset, buf.limit() - dbOffset));
         } catch (IllegalArgumentException e) {
             throw new CorruptDatabaseException("Invalid header.", e);
+        }
+        int endOfCellPointers = dbOffset + header.getSize() + header.cellCount() * 2;
+        if (this.header.getNormalizedCellContentArea() < endOfCellPointers ||
+            this.header.getNormalizedCellContentArea() > this.dbHeader.pageSizeWithoutReserved()) {
+            throw new CorruptDatabaseException(
+                "Invalid cellContentArea. Actual value: %d".formatted(this.header.getNormalizedCellContentArea()));
         }
     }
 
@@ -58,8 +70,14 @@ public class BTreePage {
             throw new IndexOutOfBoundsException(
                 "Invalid index for cell. Provided: %d should be in range [0..%d]".formatted(i, header.cellCount - 1));
         }
-        int offset = getDatabaseOffset() + header.getSize() + i * 2;
-        return Short.toUnsignedInt(buf.getShort(offset));
+        int slotOffset = getDatabaseOffset() + header.getSize() + i * 2;
+        int cellOffset = Short.toUnsignedInt(buf.getShort(slotOffset));
+        if (cellOffset < this.header.getNormalizedCellContentArea() ||
+            cellOffset >= this.dbHeader.pageSizeWithoutReserved()) {
+            throw new CorruptDatabaseException(
+                "The position (%d) for cell is invalid.".formatted(cellOffset));
+        }
+        return cellOffset;
     }
 
     public LeafTableCell getCell(int i) {
@@ -67,28 +85,31 @@ public class BTreePage {
             throw new UnsupportedOperationException(
                 "The page type is not lead table. Current implementation can work only with  lead table page type.");
         }
-        if (i < header.getSize() || i > buf.limit()) {
-            throw new IllegalArgumentException(
-                "The position (%d) for cell is invalid.".formatted(i));
-        }
+
+        int offset = getCellPointer(i);
+
         ByteBuffer newBuffer = buf.duplicate();
-        newBuffer.position(i);
+        newBuffer.position(offset);
         long payloadSize = Varint.read(newBuffer);
-        if (payloadSize > (dbHeader.pageSize() - TABLE_LEAF_MAX_LOCAL_OVERHEAD - dbHeader.reservedSpacePerPage())) {
+        long rowId = Varint.read(newBuffer);
+        int maxLocalPayload = this.dbHeader.pageSizeWithoutReserved() - TABLE_LEAF_MAX_LOCAL_OVERHEAD;
+
+        if (payloadSize > maxLocalPayload) {
             throw new UnsupportedOperationException(
                 "The page is overflow. Current implementation can not works with overflow page.");
         }
-        if (newBuffer.position() + payloadSize > newBuffer.limit()) {
+        if (newBuffer.position() + payloadSize > dbHeader.pageSizeWithoutReserved()) {
             throw new CorruptDatabaseException(
-                "Invalid size of the cell with position %d. The payload size exceed the buffer limit.".formatted(i));
+                "Invalid size of the cell with position %d. Payload ends at %d, past the usable page size %d.".formatted(
+                    offset, newBuffer.position() + payloadSize, dbHeader.pageSizeWithoutReserved()));
         }
-        return new LeafTableCell(Varint.read(newBuffer), newBuffer.slice(newBuffer.position(), (int) payloadSize));
+        return new LeafTableCell(rowId, newBuffer.slice(newBuffer.position(), (int) payloadSize));
     }
 
     public record LeafTableCell(long rowId, ByteBuffer payload) {
     }
 
-    public record Header(BTreePageType type, int cellCount, long rightMostPointer) {
+    public record Header(BTreePageType type, int cellCount, long rightMostPointer, int cellContentArea) {
         static Header parse(ByteBuffer buf) {
             if (buf.limit() < 8) { // 8 is a minimum size of the header
                 throw new IllegalArgumentException("Invalid header (small size).");
@@ -102,11 +123,16 @@ public class BTreePage {
             long rightMostPointer = (!type.isLeaf()) ?
                 Integer.toUnsignedLong(buf.getInt(8)) : 0L;
 
-            return new Header(type, cellCount, rightMostPointer);
+            int cellContentArea = Short.toUnsignedInt(buf.getShort(5));
+            return new Header(type, cellCount, rightMostPointer, cellContentArea);
         }
 
         public int getSize() {
             return type.getHeaderSize();
+        }
+
+        public int getNormalizedCellContentArea() {
+            return (cellContentArea == 0) ? 65536 : cellContentArea;
         }
     }
 }

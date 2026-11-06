@@ -1,6 +1,7 @@
 package net.porplenko.sqlite.cli;
 
 import java.io.IOException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -20,20 +21,27 @@ public final class Main {
             System.out.println("usage: sqlite-java <path-to-db> <command>");
             return;
         }
-        try (Pager pager = FilePager.open(Path.of(args[0]))) {
-            switch (args[1]) {
-                case ".tables" -> {
-                    Schema schema = new Schema(pager);
-                    Arrays.stream(schema.getSchemas())
-                        .filter(SchemaEntry::isTableOrView)
-                        .filter(entry -> !entry.name().startsWith("sqlite"))
-                        .sorted(Comparator.comparing(SchemaEntry::name))
-                        .forEach(entry -> System.out.println(entry.name()));
+        try {
+            try (Pager pager = FilePager.open(Path.of(args[0]))) {
+                switch (args[1]) {
+                    case ".tables" -> {
+                        Schema schema = new Schema(pager);
+                        Arrays.stream(schema.getSchemas())
+                            .filter(SchemaEntry::isTableOrView)
+                            .filter(entry -> !entry.name().startsWith("sqlite_"))
+                            .sorted(Comparator.comparing(SchemaEntry::name))
+                            .forEach(entry -> System.out.println(entry.name()));
+                    }
+                    default -> throw new UnsupportedOperationException("Invalid command: %s".formatted(args[1]));
                 }
-                default -> throw new UnsupportedOperationException("Invalid command: %s".formatted(args[1]));
+
             }
-
+        } catch (NoSuchFileException e) {
+            System.err.printf("No file: %s%n", e.getMessage());
+            System.exit(1);
+        } catch (Throwable e) {
+            System.err.printf("Error: %s%n", e.getMessage());
+            System.exit(1);
         }
-
     }
 }

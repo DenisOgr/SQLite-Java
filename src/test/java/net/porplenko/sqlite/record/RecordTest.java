@@ -2,10 +2,12 @@ package net.porplenko.sqlite.record;
 
 import java.nio.ByteBuffer;
 import java.util.HexFormat;
+import net.porplenko.sqlite.common.exceptions.CorruptDatabaseException;
 import net.porplenko.sqlite.page.TextEncoding;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RecordTest {
     @Test
@@ -24,5 +26,22 @@ class RecordTest {
         assertThat(values[4]).isEqualTo(new Value.Int(371));
         assertThat(values[5]).isEqualTo(new Value.Text("1984, June"));
         assertThat(values[6]).isEqualTo(new Value.Text("1984"));
+    }
+
+    @Test
+    void parseEmptyPayloadSuccess() {
+        ByteBuffer payload = ByteBuffer.wrap(HexFormat.ofDelimiter(" ").parseHex("02 00"));
+        Record actualRecord = Record.parse(payload, TextEncoding.UTF_8);
+        Value[] values = actualRecord.values();
+        assertThat(values.length).isEqualTo(1);
+        assertThat(values[0]).isEqualTo(new Value.Null());
+    }
+
+    @Test
+    void parseInvalidHeader() {
+        ByteBuffer payload = ByteBuffer.wrap(HexFormat.ofDelimiter(" ").parseHex("03 00"));
+        assertThatThrownBy(() -> Record.parse(payload, TextEncoding.UTF_8))
+            .isInstanceOf(CorruptDatabaseException.class)
+            .hasMessageContaining("Invalid size of the header of Record");
     }
 }

@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import net.porplenko.sqlite.common.exceptions.CorruptDatabaseException;
 import net.porplenko.sqlite.io.FilePager;
+import net.porplenko.sqlite.io.Pager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,7 @@ class BTreePageTest {
 
     @Test
     void createWithInvalidPageNum() {
-        ByteBuffer buf = ByteBuffer.allocate(120);
+        ByteBuffer buf = ByteBuffer.allocate(dbHeader.pageSizeWithoutReserved());
         assertThatThrownBy(() -> new BTreePage(buf, 0, dbHeader))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid page number");
@@ -55,7 +56,7 @@ class BTreePageTest {
 
     @Test
     void createWithInvalidHeader() {
-        ByteBuffer buf = ByteBuffer.allocate(120);
+        ByteBuffer buf = ByteBuffer.allocate(dbHeader.pageSizeWithoutReserved());
         assertThatThrownBy(() -> new BTreePage(buf, 2, dbHeader))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining("Invalid header");
@@ -162,6 +163,7 @@ class BTreePageTest {
         assertThat(header.cellCount()).isEqualTo(108);
         assertThat(header.rightMostPointer()).isEqualTo(232);
         assertThat(header.getSize()).isEqualTo(12);
+        assertThat(header.cellContentArea()).isEqualTo(3450);
     }
 
     @Test
@@ -172,6 +174,7 @@ class BTreePageTest {
         assertThat(header.cellCount()).isEqualTo(14);
         assertThat(header.rightMostPointer()).isEqualTo(301);
         assertThat(header.getSize()).isEqualTo(12);
+        assertThat(header.cellContentArea()).isEqualTo(3956);
     }
 
     @Test
@@ -182,6 +185,7 @@ class BTreePageTest {
         assertThat(header.cellCount()).isEqualTo(57);
         assertThat(header.rightMostPointer()).isEqualTo(0);
         assertThat(header.getSize()).isEqualTo(8);
+        assertThat(header.cellContentArea()).isEqualTo(146);
     }
 
     @Test
@@ -192,48 +196,58 @@ class BTreePageTest {
         assertThat(header.cellCount()).isEqualTo(448);
         assertThat(header.rightMostPointer()).isEqualTo(0);
         assertThat(header.getSize()).isEqualTo(8);
+        assertThat(header.cellContentArea()).isEqualTo(1408);
     }
 
     @Test
-    void getCellInvalidIndex() {
-        int pageNum = 4;
-        ByteBuffer buf = pager.readPage(pageNum);
-        BTreePage page = new BTreePage(buf, pageNum, dbHeader);
-        assertThatThrownBy(() -> page.getCell(0))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("The position (0) for cell is invalid.");
-
-        assertThatThrownBy(() -> page.getCell(2))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("The position (2) for cell is invalid.");
-
-        assertThatThrownBy(() -> page.getCell(-1))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("The position (-1) for cell is invalid.");
-
-        int invalidPos = buf.limit() + 1;
-        assertThatThrownBy(() -> page.getCell(invalidPos))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("The position (%d) for cell is invalid.".formatted(invalidPos));
+    void getCellForOverflowPage() throws URISyntaxException, IOException {
+        URL url = FilePager.class.getResource("/sample-dbs/overflow.db");
+        assertThat(url).isNotNull();
+        try (Pager pager = FilePager.open(Path.of(url.toURI()))) {
+            DatabaseHeader dbHeader = DatabaseHeader.parse(pager.readPage(1L));
+            int pageNum = 2;
+            ByteBuffer buf = pager.readPage(pageNum);
+            BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+            assertThatThrownBy(() -> page.getCell(0))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining(
+                    "The page is overflow. Current implementation can not works with overflow page");
+        }
     }
 
     @Test
-    void getCellForOverflowPage() {
-        // use real page, but fake small page size
-        int pageNum = 4;
-        ByteBuffer buf = pager.readPage(pageNum);
-        DatabaseHeader dbHeader = new DatabaseHeader(
-            10,
-            8,
-            this.dbHeader.pageCount(),
-            this.dbHeader.textEncoding());
+    void getSuccessCellForOverflowEdgePage() throws URISyntaxException, IOException {
+        URL url = FilePager.class.getResource("/sample-dbs/overflow_edge.db");
+        assertThat(url).isNotNull();
+        try (Pager pager = FilePager.open(Path.of(url.toURI()))) {
+            DatabaseHeader dbHeader = DatabaseHeader.parse(pager.readPage(1L));
+            int pageNum = 2;
+            ByteBuffer buf = pager.readPage(pageNum);
+            BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+            BTreePage.LeafTableCell cell = page.getCell(0);
+            assertThat(cell.rowId()).isEqualTo(1);
+            assertThat(cell.payload().limit()).isEqualTo(4049);
+        }
+    }
 
-        BTreePage page = new BTreePage(buf, pageNum, dbHeader);
-        int pointer = page.getCellPointer(0);
-        assertThatThrownBy(() -> page.getCell(pointer))
-            .isInstanceOf(UnsupportedOperationException.class)
-            .hasMessageContaining(
-                "The page is overflow. Current implementation can not works with overflow page");
+    @Test
+    void getFailureCellForOverflowEdgePage() throws URISyntaxException, IOException {
+        // created with macOS /usr/bin/sqlite3 (reserved = 12)
+        URL url = FilePager.class.getResource("/sample-dbs/overflow_edge.db");
+        assertThat(url).isNotNull();
+        try (Pager pager = FilePager.open(Path.of(url.toURI()))) {
+            DatabaseHeader dbHeader = DatabaseHeader.parse(pager.readPage(1L));
+            assertThat(dbHeader.reservedSpacePerPage())
+                .as("created with macOS /usr/bin/sqlite3 (reserved=12)")
+                .isEqualTo(12);
+            int pageNum = 3;
+            ByteBuffer buf = pager.readPage(pageNum);
+            BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+            assertThatThrownBy(() -> page.getCell(0))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining(
+                    "The page is overflow. Current implementation can not works with overflow page");
+        }
     }
 
     @ParameterizedTest
@@ -245,8 +259,7 @@ class BTreePageTest {
     void getCellForUnsupportedPageTypes(int pageNum) {
         ByteBuffer buf = pager.readPage(pageNum);
         BTreePage page = new BTreePage(buf, pageNum, dbHeader);
-        int pointer = page.getCellPointer(0);
-        assertThatThrownBy(() -> page.getCell(pointer))
+        assertThatThrownBy(() -> page.getCell(0))
             .isInstanceOf(UnsupportedOperationException.class)
             .hasMessageContaining(
                 "The page type is not lead table. Current implementation can work only with  lead table page type.");
@@ -257,10 +270,21 @@ class BTreePageTest {
         int pageNum = 4;
         ByteBuffer buf = pager.readPage(pageNum);
         BTreePage page = new BTreePage(buf, pageNum, dbHeader);
-        int pointer = page.getCellPointer(0);
-        BTreePage.LeafTableCell cell = page.getCell(pointer);
+        BTreePage.LeafTableCell cell = page.getCell(0);
         assertThat(cell.rowId()).isEqualTo(1);
         assertThat(cell.payload().limit()).isEqualTo(62);
+    }
+
+    @Test
+    void getInvalidCellIndex() {
+        int pageNum = 4;
+        ByteBuffer buf = pager.readPage(pageNum);
+        BTreePage page = new BTreePage(buf, pageNum, dbHeader);
+        assertThatThrownBy(() -> page.getCell(-1))
+            .isInstanceOf(IndexOutOfBoundsException.class);
+
+        assertThatThrownBy(() -> page.getCell(page.getHeader().cellCount()))
+            .isInstanceOf(IndexOutOfBoundsException.class);
     }
 
     @Test

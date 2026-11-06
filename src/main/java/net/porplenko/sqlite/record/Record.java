@@ -2,6 +2,7 @@ package net.porplenko.sqlite.record;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import net.porplenko.sqlite.common.exceptions.CorruptDatabaseException;
 import net.porplenko.sqlite.page.TextEncoding;
 import net.porplenko.sqlite.page.Varint;
 
@@ -9,7 +10,9 @@ public record Record(Value[] values) {
     public static Record parse(ByteBuffer buf, TextEncoding encoding) {
         long headerFinishPosition = buf.position() + Varint.read(buf);
         ArrayList<SerialType> serialTypes = new ArrayList<>();
-
+        if (headerFinishPosition > buf.limit()) {
+            throw new CorruptDatabaseException("Invalid size of the header of Record.");
+        }
         while (buf.position() < headerFinishPosition) {
             serialTypes.add(SerialType.of(Varint.read(buf)));
         }
