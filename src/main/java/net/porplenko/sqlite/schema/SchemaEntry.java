@@ -3,30 +3,29 @@ package net.porplenko.sqlite.schema;
 import java.util.Locale;
 import java.util.Optional;
 import net.porplenko.sqlite.common.exceptions.CorruptDatabaseException;
-import net.porplenko.sqlite.record.Record;
 import net.porplenko.sqlite.record.Value;
 
 public record SchemaEntry(SchemaEntryType type, String name, String tblName, long rootPage, String sql) {
-    public static SchemaEntry parse(Record record) {
-        if (record.values().length != 5) {
+    public static SchemaEntry parse(Value[] values) {
+        if (values.length != 5) {
             throw new CorruptDatabaseException(
                 "Invalid record size. Expected number of columns 5, actual %d.".formatted(
-                    record.values().length));
+                    values.length));
         }
 
-        long rootPage = number(record.values()[3], "rootpage");
+        long rootPage = number(values[3], "rootpage");
         if (rootPage < 0) {
             throw new CorruptDatabaseException("The column `rootpage` is invalid: negative value.");
         }
-        SchemaEntryType type = entityType(record.values()[0], "type");
+        SchemaEntryType type = entityType(values[0], "type");
 
         // the order of columns are fixed from doc.
         return new SchemaEntry(
             type,
-            text(record.values()[1], "name"),
-            text(record.values()[2], "tbl_name"),
+            text(values[1], "name"),
+            text(values[2], "tbl_name"),
             rootPage,
-            nullableText(record.values()[4], "sql")
+            nullableText(values[4], "sql")
         );
     }
 
