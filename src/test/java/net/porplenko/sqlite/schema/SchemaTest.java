@@ -34,4 +34,16 @@ class SchemaTest {
             assertThat(sqlite_sequences.sql()).isEqualTo("CREATE TABLE sqlite_sequence(name,seq)");
         }
     }
+
+    @Test
+    void getSchemaTwiceSuccess() throws URISyntaxException, IOException {
+        URL url = FilePager.class.getResource("/sample-dbs/superheroes.db");
+        assertThat(url).isNotNull();
+        try (FilePager pager = FilePager.open(Path.of(url.toURI()))) {
+            Schema schema = new Schema(pager);
+            SchemaEntry[] schemas1 = schema.getSchemas();
+            SchemaEntry[] schemas2 = schema.getSchemas();
+            assertThat(schemas1).isEqualTo(schemas2);
+        }
+    }
 }

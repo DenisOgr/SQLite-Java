@@ -2,7 +2,6 @@ package net.porplenko.sqlite.schema;
 
 import java.util.Optional;
 import net.porplenko.sqlite.common.exceptions.CorruptDatabaseException;
-import net.porplenko.sqlite.record.Record;
 import net.porplenko.sqlite.record.Value;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +15,7 @@ public class SchemaEntryTest {
             new Value.Int(100)
         };
 
-        assertThatThrownBy(() -> SchemaEntry.parse(new Record(values)))
+        assertThatThrownBy(() -> SchemaEntry.parse(values))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining("Invalid record size. Expected number of columns 5, actual 1.");
     }
@@ -32,7 +31,7 @@ public class SchemaEntryTest {
             new Value.Int(105),
         };
 
-        assertThatThrownBy(() -> SchemaEntry.parse(new Record(values)))
+        assertThatThrownBy(() -> SchemaEntry.parse(values))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining("Invalid record size. Expected number of columns 5, actual 6.");
     }
@@ -47,7 +46,7 @@ public class SchemaEntryTest {
             new Value.Int(104)
         };
 
-        assertThatThrownBy(() -> SchemaEntry.parse(new Record(values)))
+        assertThatThrownBy(() -> SchemaEntry.parse(values))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining("Column `type` has invalid type. Should be Value.Text, got Int[value=100].");
     }
@@ -62,7 +61,7 @@ public class SchemaEntryTest {
             new Value.Text("CREATE TABLE..")
         };
 
-        assertThatThrownBy(() -> SchemaEntry.parse(new Record(values)))
+        assertThatThrownBy(() -> SchemaEntry.parse(values))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining(
                 "Column `type` has invalid value. Unknown type");
@@ -78,7 +77,7 @@ public class SchemaEntryTest {
             new Value.Text("CREATE TABLE..")
         };
 
-        assertThatThrownBy(() -> SchemaEntry.parse(new Record(values)))
+        assertThatThrownBy(() -> SchemaEntry.parse(values))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining("The column `rootpage` is invalid: negative value.");
     }
@@ -93,7 +92,7 @@ public class SchemaEntryTest {
             new Value.Text("CREATE TABLE..")
         };
 
-        assertThatThrownBy(() -> SchemaEntry.parse(new Record(values)))
+        assertThatThrownBy(() -> SchemaEntry.parse(values))
             .isInstanceOf(CorruptDatabaseException.class)
             .hasMessageContaining("Column `rootpage` has invalid type. Should be Value.Int, got Text[value=10].");
     }
@@ -108,7 +107,7 @@ public class SchemaEntryTest {
             new Value.Text("CREATE TABLE..")
         };
 
-        SchemaEntry schema = SchemaEntry.parse(new Record(values));
+        SchemaEntry schema = SchemaEntry.parse(values);
         assertThat(schema.name()).isEqualTo("name1");
         assertThat(schema.tblName()).isEqualTo("name2");
         assertThat(schema.type()).isEqualTo(SchemaEntry.SchemaEntryType.TABLE);
@@ -125,7 +124,7 @@ public class SchemaEntryTest {
             new Value.Int(100),
             new Value.Null()
         };
-        SchemaEntry schema = SchemaEntry.parse(new Record(values));
+        SchemaEntry schema = SchemaEntry.parse(values);
         assertThat(schema.sql()).isNull();
         assertThat(schema.getSqlOptional()).isEqualTo(Optional.empty());
     }
